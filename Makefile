@@ -1,6 +1,6 @@
 CC = mpicc
 CFLAGS =
-FILE = sum_solution
+FILE = master-slave
 
 MPIRUN = mpirun
 MPIRUN_FLAGS = -np 10 --hostfile hostfile
