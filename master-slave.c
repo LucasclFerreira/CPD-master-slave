@@ -44,8 +44,8 @@ int main(int argc, char** argv) {
     int seed = time(NULL);
     srand(seed);
 
-    MPI_Status status;
     MPI_Init(NULL, NULL);
+    MPI_Status status;
 
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -54,125 +54,104 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     const int MAX_NUMBERS = 2000;
-    // sending
+
+    // sending arr
     int *numbers;
     int number_amount;
 
-    // receiving
+    // receiving arr
     int *num_arr;
 
     if (world_rank == 0) {
-        for(int p = 1; p < world_size; p++) {
-            number_amount = generate_random(1000, MAX_NUMBERS);
-            numbers = malloc(number_amount * sizeof(int));
-            for(int i = 0; i < number_amount; i++) {
-                numbers[i] = generate_random(0, 100);
-                // printf("arr[%d]: %d\n", i, numbers[i]);
-            }
-            
-            int tag = generate_random(0, 4);
-            // int tag = 0;
-            MPI_Send(numbers, number_amount, MPI_INT, p, tag, MPI_COMM_WORLD);
-            printf("MASTER sent %d numbers to %d. TAG: %d\n", number_amount, p, tag);
-            
-        }
+        int n_tasks = generate_random(4, 40);
+        printf("N_TASK = %d\n", n_tasks);
 
-        for(int p = 1; p < world_size; p++){
-            // MPI_Probe(p, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            MPI_Probe(p, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            int tag = status.MPI_TAG;
+        for (int i = 1; i < world_size; i++) {
+            for (int t = 0; t < n_tasks; t++) {
 
-            int resultado;
-            MPI_Recv(&resultado, 1, MPI_INT, p, tag, MPI_COMM_WORLD, &status);
+                number_amount = generate_random(1000, MAX_NUMBERS);
+                numbers = (int*)malloc(number_amount * sizeof(int));
 
-            printf("\nA tarefa foi %d e aqui está o resultado: %d\n", tag, resultado);
-        }
-    } else {
-        MPI_Probe(0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-        int tag = status.MPI_TAG;
-
-        int size;
-        MPI_Get_count(&status, MPI_INT, &size);
-
-        num_arr = malloc(size * sizeof(int));
-
-        printf("PROBE recebeu: size=%d; tag=%d\n", size, tag);
-
-        switch (tag) {
-            case 0: {
-                MPI_Recv(num_arr, size, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-
-                int sum = sum_array(num_arr, size);
-                MPI_Send(&sum, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-                break;
-            }
-            case 1: {
-                MPI_Recv(num_arr, size, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+                for(int j = 0; j < number_amount; j++) {
+                    numbers[j] = generate_random(0, 100);
+                }
                 
-                int avg = sum_array(num_arr, size) / size;
-                MPI_Send(&avg, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
-                break;
-            }     
-            case 2: {
-                MPI_Recv(num_arr, size, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
+                int send_tag = generate_random(0, 4);  // escolhendo task aleatória
+            
+                MPI_Send(numbers, number_amount, MPI_INT, i, send_tag, MPI_COMM_WORLD);
+            }
 
-                int max = max_val(num_arr, size);
-                MPI_Send(&max, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);       
-                break;
-            }
-            case 3: {
-                MPI_Recv(num_arr, MAX_NUMBERS, MPI_INT, 0, 3, MPI_COMM_WORLD, &status);
+            int finalize = 10;
+            MPI_Send(&finalize, 1, MPI_INT, i, 10, MPI_COMM_WORLD);
 
-                int med = median_val(num_arr, size);
-                MPI_Send(&med, 1, MPI_INT, 0, 3, MPI_COMM_WORLD);   
+            for (int r = 0; r < n_tasks; r++) {
+                MPI_Probe(i, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                int tag_received = status.MPI_TAG;
+                // int src = status.MPI_SOURCE;
+
+                int val;
+                MPI_Recv(&val, 1, MPI_INT, i, tag_received, MPI_COMM_WORLD, &status);
+                printf("\t[Root] received from %d the value %d with tag = %d\n", i, val, status.MPI_TAG);
+            }
+
+            // MPI_Recv(&resultado, 1, MPI_INT, processor, send_tag, MPI_COMM_WORLD, &status);
+            // printf("Processador %d obteve resultado = %d\n", status.MPI_SOURCE, resultado);
+
+        }
+
+        
+    } else {
+        while (1) {
+            MPI_Probe(0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            int recv_tag = status.MPI_TAG;
+
+            if (recv_tag == 10) {
+                printf("Tag 10 received - finalizing process...\n");
                 break;
             }
-            default: {
-                printf("Tag of %d does nothing.\n", tag);
-                break;
+
+            int size;
+            MPI_Get_count(&status, MPI_INT, &size);
+
+            num_arr = (int*)malloc(size * sizeof(int));
+            printf("\t\t[Worker] received %d numbers and tag = %d\n", size, recv_tag);
+
+            int value;
+            MPI_Recv(num_arr, size, MPI_INT, 0, recv_tag, MPI_COMM_WORLD, &status);
+            switch (recv_tag) {
+                case 0: {
+                    value = sum_array(num_arr, size);
+                    // printf("\tsum: %d\n", value);
+                    break;
+                }
+                case 1: {
+                    value = sum_array(num_arr, size) / size;
+                    // printf("\tavg: %d\n", value);
+                    break;
+                }     
+                case 2: {
+                    value = max_val(num_arr, size);  
+                    // printf("\tmax: %d\n", value);
+                    break;
+                }
+                case 3: {
+                    value = median_val(num_arr, size);
+                    // printf("\tmed: %d\n", value);
+                    break;
+                }
+                default: {
+                    printf("Tag of %d does nothing.\n", status.MPI_TAG);
+                    break;
+                }    
             }
+            MPI_Send(&value, 1, MPI_INT, 0, recv_tag, MPI_COMM_WORLD);
         }
     }
-
     free(num_arr);
     free(numbers);
 
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
-
-    // for (int k = 0; k < 10; k++) {
-    //     int sz = generate_random(5, 10);
-    //     int *arr = malloc(sz * sizeof(int));
-
-    //     for (int i = 0; i < sz; i++) {
-    //         arr[i] = generate_random(0, 100);
-    //         printf("%d ", arr[i]);
-    //     }
-    //     int tag = generate_random(0, 4);
-    //     int result;
-    //     switch (tag) {
-    //         case 0:
-    //             result = sum_array(arr, sz);
-    //             break;
-    //         case 1:
-    //             result = max_val(arr, sz);
-    //             break;
-    //         case 2:
-    //             result = median_val(arr, sz);
-    //             break;
-    //         case 3:
-    //             result = sum_array(arr, sz) / sz;
-    //             break;
-    //         default:
-    //             break;
-    //     }
-    //     printf("[%d] results in: %d\n\n", tag, result);
-    // }
-
-    // srand(time(NULL));
-    // int rng = generate_random(1000, 2000);
-    // printf("random number: %d\n", rng);
-
 
     return 0;
 }
